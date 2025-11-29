@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>บันทึกปั้นพอร์ต 10% รายวัน</title>
+   <style>
+       body { font-family: sans-serif; background: #f0f2f5; padding: 15px; margin: 0; }
+       .container { max-width: 650px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+       h2 { text-align: center; color: #333; margin-top: 0; }
+       .input-group { margin-bottom: 15px; }
+       
+       /* สไตล์สำหรับช่องกรอกและปุ่ม */
+       input[type="number"] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+       
+       /* --- การจัด Layout ปุ่ม --- */
+       .button-group {
+           display: flex; /* ใช้ Flexbox ในการจัดวาง */
+           gap: 10px; /* ระยะห่างระหว่างปุ่ม */
+           margin-top: 20px;
+       }
+       button {
+           flex-grow: 1; /* ทำให้ปุ่มขยายเต็มพื้นที่เท่าๆ กัน */
+           padding: 12px;
+           color: white;
+           border: none;
+           border-radius: 8px;
+           font-size: 16px;
+           cursor: pointer;
+           font-weight: bold;
+       }
+       
+       /* ปุ่มเริ่มต้น */
+       #startBtn { 
+           background: #28a745; /* สีเขียวหลัก */
+           width: 100%; /* ทำให้ปุ่มขยายเต็มความกว้าง */
+           margin-top: 15px; /* เพิ่มระยะห่างด้านบน */
+       } 
+       #startBtn:hover { 
+           background: #218838; /* สีเขียวเข้มขึ้นเมื่อเมาส์ชี้ */
+       }
+       
+       /* ปุ่มบันทึกผล (ใน dailyLog) */
+       #recordDayBtn { background: #28a745; }
+       #recordDayBtn:hover { background: #218838; }
+       
+       /* ปุ่มล้างข้อมูล */
+       #resetBtn { background: #dc3545; }
+       #resetBtn:hover { background: #c82333; }
+       /* -------------------------- */
+
+       /* --- การจัด Layout ตารางให้มีเส้นขอบและจัดกึ่งกลาง --- */
+       table {
+           width: 100%;
+           border-collapse: collapse;
+           margin-top: 20px;
+           font-size: 14px;
+           table-layout: fixed; /* ทำให้คอลัมน์มีความกว้างคงที่ */
+       }
+       th, td {
+           border: 1px solid #ccc; /* เพิ่มเส้นขอบตาราง */
+           border-collapse: collapse;
+           padding: 10px 5px;
+           text-align: center; /* จัดกึ่งกลางตัวเลขในตาราง */
+           overflow: hidden;
+           word-wrap: break-word;
+       }
+       th { background: #333; color: white; text-align: center; }
+
+       /* กำหนดความกว้างคอลัมน์ */
+       th:nth-child(1), td:nth-child(1) { width: 10%; } /* วัน */
+       th:nth-child(2), td:nth-child(2) { width: 30%; } /* ทุนเริ่มต้น */
+       th:nth-child(3), td:nth-child(3) { width: 30%; } /* เป้าหมายจบวัน */
+       th:nth-child(4), td:nth-child(4) { width: 30%; } /* ผลลัพธ์ยอดรวมจริง */
+       
+       .target-text { color: #007bff; font-weight: bold; }
+       .actual-win { color: #28a745; font-weight: bold; }
+       .actual-loss { color: #dc3545; font-weight: bold; }
+       
+       .day-info {
+           background: #e9f7ef;
+           border-left: 5px solid #28a745;
+           padding: 15px;
+           border-radius: 5px;
+           margin-bottom: 15px;
+           font-size: 15px;
+       }
+   </style>
+</head>
+<body onload="loadLog()">
+
+<div class="container">
+   <h2>📝 สมุดบันทึกปั้นพอร์ต 10%</h2>
+
+   <div id="setupForm">
+       <div class="input-group">
+           <label for="initialCapital">กรอกทุนเริ่มต้นครั้งแรก 💰</label>
+           <input type="number" id="initialCapital" placeholder="เช่น 1000.00">
+       </div>
+       <button id="startBtn" onclick="startNewLog()">เริ่มบันทึกพอร์ตใหม่</button>
+   </div>
+
+   <div id="dailyLog" style="display: none;">
+       <div id="currentDayInput">
+           </div>
+       
+       <div class="button-group">
+           <button id="recordDayBtn" onclick="recordDay()">บันทึกผล</button>
+           <button id="resetBtn" onclick="resetLog()">ล้างข้อมูล/เริ่มใหม่</button>
+       </div>
+
+       <table>
+           <thead>
+               <tr>
+                   <th>วัน</th>
+                   <th>ทุนเริ่มต้น</th>
+                   <th>เป้าหมายจบวัน</th>
+                   <th>ผลลัพธ์ยอดรวมจริง</th>
+               </tr>
+           </thead>
+           <tbody id="logTableBody">
+               </tbody>
+       </table>
+   </div>
+</div>
+
+<script>
+   const STORAGE_KEY = 'dailyCompoundingLog_10percent_V2';
+
+   // ฟังก์ชันจัดรูปแบบตัวเลข (ใส่ลูกน้ำ)
+   function fmt(n) { return n.toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+   
+   // โหลดข้อมูลจาก Local Storage
+   function loadLog() {
+       const data = localStorage.getItem(STORAGE_KEY);
+       const logData = data ? JSON.parse(data) : { entries: [], currentCapital: 0 };
+       renderLog(logData);
+       return logData;
+   }
+
+   // บันทึกข้อมูลลง Local Storage
+   function saveLog(logData) {
+       localStorage.setItem(STORAGE_KEY, JSON.stringify(logData));
+       renderLog(logData);
+   }
+   
+   // เริ่มบันทึกใหม่
+   function startNewLog() {
+       const initialCap = parseFloat(document.getElementById('initialCapital').value);
+       if (isNaN(initialCap) || initialCap <= 0) {
+           alert("กรุณาใส่ทุนเริ่มต้นให้ถูกต้อง");
+           return;
+       }
+       
+       const logData = {
+           entries: [],
+           currentCapital: initialCap
+       };
+       saveLog(logData);
+   }
+   
+   // บันทึกผลลัพธ์ของวันปัจจุบัน
+   function recordDay() {
+       const inputElement = document.getElementById('endCapitalInput');
+       const endCapital = parseFloat(inputElement.value);
+       const logData = loadLog();
+       
+       if (isNaN(endCapital) || endCapital < 0) {
+           alert("กรุณาใส่ผลลัพธ์ยอดรวมที่ได้วันนี้ให้ถูกต้อง");
+           return;
+       }
+
+       const dayNumber = logData.entries.length + 1;
+       const startCap = logData.currentCapital;
+       const targetProfit = startCap * 0.10;
+       const targetTotal = startCap + targetProfit;
+       const actualProfit = endCapital - startCap;
+
+       logData.entries.push({
+           day: dayNumber,
+           startCap: startCap,
+           targetProfit: targetProfit,
+           targetTotal: targetTotal,
+           endCap: endCapital,
+           actualProfit: actualProfit
+       });
+
+       logData.currentCapital = endCapital;
+       
+       saveLog(logData);
+       inputElement.value = '';
+   }
+
+   // ล้างข้อมูลทั้งหมด
+   function resetLog() {
+       if (confirm("คุณแน่ใจหรือไม่ที่จะล้างข้อมูลบันทึกทั้งหมดและเริ่มต้นใหม่? ข้อมูลที่บันทึกไว้จะหายไป")) {
+           localStorage.removeItem(STORAGE_KEY);
+           location.reload();
+       }
+   }
+
+   // แสดงผลบนหน้าจอ
+   function renderLog(logData) {
+       const setupForm = document.getElementById('setupForm');
+       const dailyLogDiv = document.getElementById('dailyLog');
+       const logTableBody = document.getElementById('logTableBody');
+       const currentDayInput = document.getElementById('currentDayInput');
+       
+       logTableBody.innerHTML = "";
+       currentDayInput.innerHTML = "";
+
+       if (logData.entries.length === 0 && logData.currentCapital === 0) {
+           setupForm.style.display = 'block';
+           dailyLogDiv.style.display = 'none';
+       } else {
+           setupForm.style.display = 'none';
+           dailyLogDiv.style.display = 'block';
+
+           const nextDay = logData.entries.length + 1;
+           const startCap = logData.currentCapital;
+           const targetProfit = startCap * 0.10;
+           const targetTotal = startCap + targetProfit;
+           
+           // 1. สร้างตารางบันทึกผล
+           logData.entries.forEach(entry => {
+               const targetColor = entry.actualProfit >= entry.targetProfit ? 'actual-win' : 'actual-loss';
+               
+               logTableBody.innerHTML += `
+                   <tr>
+                       <td>${entry.day}</td>
+                       <td>${fmt(entry.startCap)}</td>
+                       <td class="target-text">${fmt(entry.targetTotal)}</td>
+                       <td class="${targetColor}">${fmt(entry.endCap)} (${entry.actualProfit >= 0 ? '+' : ''}${fmt(entry.actualProfit)})</td>
+                   </tr>
+               `;
+           });
+
+           // 2. สร้างช่องกรอกสำหรับวันถัดไป
+           currentDayInput.innerHTML = `
+               <div class="day-info">
+                   🗓️ วันที่ ${nextDay} <br>
+                   ทุนตั้งต้นวันนี้ : ${fmt(startCap)} บาท<br>
+                   เป้าหมายยอดรวมจบวัน : <span class="target-text">${fmt(targetTotal)}</span> บาท
+               </div
+               <label for="endCapitalInput">กรอกยอดรวมเงินในพอร์ตที่ได้จริงวันนี้ 💸</label>
+               <input type="number" id="endCapitalInput" placeholder="ยอดรวมทั้งหมด (ต้องมากกว่า ${fmt(startCap)})">
+           `;
+           
+           // อัปเดตข้อความบนปุ่มบันทึกผลให้ตรงกับวันปัจจุบัน
+           document.getElementById('recordDayBtn').innerText = `บันทึกผลวันที่ ${nextDay}`;
+       }
+   }
+</script>
+
+</body>
+</html>
